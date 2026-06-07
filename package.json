@@ -1,6 +1,7 @@
 {
   "name": "flowblock",
   "version": "1.0.0",
+  "type": "module",
   "description": "A block-based editor with local file storage",
   "main": "./out/main/index.js",
   "scripts": {
