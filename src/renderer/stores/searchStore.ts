@@ -15,6 +15,8 @@ interface SearchState {
   loading: boolean
   highlightBlockId: string | null
   highlightQuery: string | null
+  // Used by BlockEditor to force-include a block in the virtualized window
+  scrollToBlockId: string | null
   open: () => void
   close: () => void
   setQuery: (query: string) => void
@@ -30,6 +32,7 @@ export const useSearchStore = create<SearchState>((set) => ({
   loading: false,
   highlightBlockId: null,
   highlightQuery: null,
+  scrollToBlockId: null,
 
   open: () => set({ isOpen: true, query: '', results: [] }),
   close: () => set({ isOpen: false }),
@@ -50,6 +53,10 @@ export const useSearchStore = create<SearchState>((set) => ({
     }
   },
 
-  setHighlight: (blockId, query) => set({ highlightBlockId: blockId, highlightQuery: query }),
-  clearHighlight: () => set({ highlightBlockId: null, highlightQuery: null })
+  setHighlight: (blockId, query) => set({
+    highlightBlockId: blockId,
+    highlightQuery: query,
+    scrollToBlockId: blockId
+  }),
+  clearHighlight: () => set({ highlightBlockId: null, highlightQuery: null, scrollToBlockId: null })
 }))

@@ -1,6 +1,24 @@
 import { dialog, BrowserWindow } from 'electron'
 import { writeFile } from 'fs/promises'
 
+interface DatabaseProperty {
+  id: string
+  name: string
+  type: string
+}
+
+interface DatabaseRow {
+  id: string
+  cells: Record<string, string | number | null>
+}
+
+interface DatabaseData {
+  id: string
+  title: string
+  properties: DatabaseProperty[]
+  rows: DatabaseRow[]
+}
+
 interface Block {
   type: string
   content?: string
@@ -9,6 +27,8 @@ interface Block {
   language?: string
   src?: string
   caption?: string
+  indent?: number
+  database?: DatabaseData
 }
 
 interface PageData {
@@ -22,46 +42,66 @@ export function pageToMarkdown(page: PageData): string {
   lines.push('')
 
   for (const block of page.blocks) {
+    const indentPrefix = '  '.repeat(block.indent || 0)
+
     switch (block.type) {
       case 'paragraph':
-        lines.push(block.content || '')
+        lines.push(`${indentPrefix}${block.content || ''}`)
         lines.push('')
         break
       case 'heading': {
         const prefix = '#'.repeat(block.level || 1)
-        lines.push(`${prefix} ${block.content || ''}`)
+        lines.push(`${indentPrefix}${prefix} ${block.content || ''}`)
         lines.push('')
         break
       }
       case 'todo': {
         const check = block.checked ? 'x' : ' '
-        lines.push(`- [${check}] ${block.content || ''}`)
+        lines.push(`${indentPrefix}- [${check}] ${block.content || ''}`)
         break
       }
       case 'bulletList':
-        lines.push(`- ${block.content || ''}`)
+        lines.push(`${indentPrefix}- ${block.content || ''}`)
         break
       case 'numberedList':
-        lines.push(`1. ${block.content || ''}`)
+        lines.push(`${indentPrefix}1. ${block.content || ''}`)
         break
       case 'quote':
-        lines.push(`> ${block.content || ''}`)
+        lines.push(`${indentPrefix}> ${block.content || ''}`)
         lines.push('')
         break
       case 'code':
-        lines.push('```' + (block.language || ''))
-        lines.push(block.content || '')
-        lines.push('```')
+        lines.push(`${indentPrefix}\`\`\`` + (block.language || ''))
+        lines.push(`${indentPrefix}${block.content || ''}`)
+        lines.push(`${indentPrefix}\`\`\``)
         lines.push('')
         break
       case 'divider':
-        lines.push('---')
+        lines.push(`${indentPrefix}---`)
         lines.push('')
         break
       case 'image':
-        lines.push(`![${block.caption || ''}](${block.src || ''})`)
+        lines.push(`${indentPrefix}![${block.caption || ''}](${block.src || ''})`)
         lines.push('')
         break
+      case 'database': {
+        const db = block.database
+        if (db) {
+          lines.push(`${indentPrefix}**${db.title}**`)
+          lines.push('')
+          if (db.properties.length > 0) {
+            const header = db.properties.map(p => p.name)
+            lines.push(`${indentPrefix}| ${header.join(' | ')} |`)
+            lines.push(`${indentPrefix}| ${header.map(() => '---').join(' | ')} |`)
+            for (const row of db.rows) {
+              const cells = db.properties.map(p => String(row.cells[p.id] ?? ''))
+              lines.push(`${indentPrefix}| ${cells.join(' | ')} |`)
+            }
+            lines.push('')
+          }
+        }
+        break
+      }
       default:
         break
     }
@@ -84,41 +124,72 @@ function pageToHtml(page: PageData): string {
   bodyParts.push(`<h1>${escapeHtml(page.meta.title)}</h1>`)
 
   for (const block of page.blocks) {
+    const indent = block.indent || 0
+    const pad = indent > 0 ? ` style="padding-left: ${indent * 24}px;"` : ''
+
     switch (block.type) {
       case 'paragraph':
-        bodyParts.push(`<p>${escapeHtml(block.content || '')}</p>`)
+        bodyParts.push(`<p${pad}>${escapeHtml(block.content || '')}</p>`)
         break
       case 'heading': {
         const tag = `h${Math.min(block.level || 1, 3) + 1}`
-        bodyParts.push(`<${tag}>${escapeHtml(block.content || '')}</${tag}>`)
+        bodyParts.push(`<${tag}${pad}>${escapeHtml(block.content || '')}</${tag}>`)
         break
       }
       case 'todo': {
         const check = block.checked ? '☑' : '☐'
-        const style = block.checked ? 'text-decoration: line-through; color: #888;' : ''
-        bodyParts.push(`<p style="${style}">${check} ${escapeHtml(block.content || '')}</p>`)
+        const style = block.checked
+          ? `text-decoration: line-through; color: #888;${indent > 0 ? ` padding-left: ${indent * 24}px;` : ''}`
+          : (indent > 0 ? `padding-left: ${indent * 24}px;` : '')
+        bodyParts.push(`<p${style ? ` style="${style}"` : ''}>${check} ${escapeHtml(block.content || '')}</p>`)
         break
       }
       case 'bulletList':
-        bodyParts.push(`<ul><li>${escapeHtml(block.content || '')}</li></ul>`)
+        bodyParts.push(`<ul${pad}><li>${escapeHtml(block.content || '')}</li></ul>`)
         break
       case 'numberedList':
-        bodyParts.push(`<ol><li>${escapeHtml(block.content || '')}</li></ol>`)
+        bodyParts.push(`<ol${pad}><li>${escapeHtml(block.content || '')}</li></ol>`)
         break
       case 'quote':
-        bodyParts.push(`<blockquote>${escapeHtml(block.content || '')}</blockquote>`)
+        bodyParts.push(`<blockquote${pad}>${escapeHtml(block.content || '')}</blockquote>`)
         break
       case 'code':
-        bodyParts.push(`<pre><code>${escapeHtml(block.content || '')}</code></pre>`)
+        bodyParts.push(`<pre${pad}><code>${escapeHtml(block.content || '')}</code></pre>`)
         break
       case 'divider':
         bodyParts.push('<hr />')
         break
       case 'image':
         if (block.src) {
-          bodyParts.push(`<figure><img src="${block.src}" style="max-width:100%;" />${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`)
+          bodyParts.push(`<figure${pad}><img src="${block.src}" style="max-width:100%;" />${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`)
         }
         break
+      case 'database': {
+        const db = block.database
+        if (db) {
+          bodyParts.push(`<div${pad} class="database-block">`)
+          bodyParts.push(`<h4>${escapeHtml(db.title)}</h4>`)
+          bodyParts.push('<table>')
+          bodyParts.push('<thead><tr>')
+          for (const prop of db.properties) {
+            bodyParts.push(`<th>${escapeHtml(prop.name)}</th>`)
+          }
+          bodyParts.push('</tr></thead>')
+          bodyParts.push('<tbody>')
+          for (const row of db.rows) {
+            bodyParts.push('<tr>')
+            for (const prop of db.properties) {
+              const val = row.cells[prop.id]
+              bodyParts.push(`<td>${escapeHtml(String(val ?? ''))}</td>`)
+            }
+            bodyParts.push('</tr>')
+          }
+          bodyParts.push('</tbody>')
+          bodyParts.push('</table>')
+          bodyParts.push('</div>')
+        }
+        break
+      }
       default:
         break
     }
@@ -166,6 +237,11 @@ function pageToHtml(page: PageData): string {
   figure { margin: 16px 0; }
   figcaption { font-size: 12px; color: #666; margin-top: 4px; text-align: center; }
   img { border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { border: 1px solid #e0e0e0; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  .database-block { margin: 16px 0; }
+  .database-block h4 { margin: 0 0 8px 0; font-size: 15px; }
 </style>
 </head>
 <body>
