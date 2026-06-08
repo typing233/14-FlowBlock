@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { Block, ParagraphBlock, HeadingBlock, TodoBlock, HeadingLevel, DatabaseBlock, Database, Property, ViewConfig } from '../types'
+import { Block, ParagraphBlock, HeadingBlock, TodoBlock, HeadingLevel, DatabaseBlock, Database, Property, ViewConfig, ImageBlock, CodeBlock, QuoteBlock, DividerBlock, BulletListBlock, NumberedListBlock } from '../types'
 
 export function createId(): string {
   return nanoid(10)
@@ -19,6 +19,30 @@ export function createHeadingBlock(level: HeadingLevel = 1, content = ''): Headi
 
 export function createTodoBlock(content = '', checked = false): TodoBlock {
   return { id: createId(), type: 'todo', content, checked, createdAt: now(), updatedAt: now() }
+}
+
+export function createImageBlock(src = '', caption = ''): ImageBlock {
+  return { id: createId(), type: 'image', src, caption, createdAt: now(), updatedAt: now() }
+}
+
+export function createCodeBlock(content = '', language = 'plaintext'): CodeBlock {
+  return { id: createId(), type: 'code', content, language, createdAt: now(), updatedAt: now() }
+}
+
+export function createQuoteBlock(content = ''): QuoteBlock {
+  return { id: createId(), type: 'quote', content, createdAt: now(), updatedAt: now() }
+}
+
+export function createDividerBlock(): DividerBlock {
+  return { id: createId(), type: 'divider', createdAt: now(), updatedAt: now() }
+}
+
+export function createBulletListBlock(content = ''): BulletListBlock {
+  return { id: createId(), type: 'bulletList', content, createdAt: now(), updatedAt: now() }
+}
+
+export function createNumberedListBlock(content = ''): NumberedListBlock {
+  return { id: createId(), type: 'numberedList', content, createdAt: now(), updatedAt: now() }
 }
 
 export function createDatabaseBlock(): DatabaseBlock {
@@ -50,6 +74,6 @@ export function createDatabaseBlock(): DatabaseBlock {
 }
 
 export function getBlockContent(block: Block): string {
-  if (block.type === 'database') return ''
+  if (block.type === 'database' || block.type === 'divider' || block.type === 'image') return ''
   return block.content
 }

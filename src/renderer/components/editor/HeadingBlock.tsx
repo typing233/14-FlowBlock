@@ -16,7 +16,7 @@ const headingStyles = {
 
 export function HeadingBlock({ block, onSlashCommand }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const { updateBlock, addBlockAfter, deleteBlock } = usePageStore()
+  const { updateBlock, addBlockAfter, deleteBlock, indentBlock, outdentBlock } = usePageStore()
 
   const handleInput = useCallback(() => {
     if (ref.current) {
@@ -26,6 +26,13 @@ export function HeadingBlock({ block, onSlashCommand }: Props) {
 
   const handleKeyDown = (e: KeyboardEvent) => {
     const text = ref.current?.textContent || ''
+
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) outdentBlock(block.id)
+      else indentBlock(block.id)
+      return
+    }
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -63,7 +70,7 @@ export function HeadingBlock({ block, onSlashCommand }: Props) {
         ref={ref}
         contentEditable
         suppressContentEditableWarning
-        className={`outline-none py-1 min-h-[1.5em] ${headingStyles[block.level]}`}
+        className={`outline-none py-1 min-h-[1.5em] text-gray-900 dark:text-gray-100 ${headingStyles[block.level]}`}
         data-placeholder={placeholders[block.level]}
         onInput={handleInput}
         onKeyDown={handleKeyDown}

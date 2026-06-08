@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { DndContext, closestCenter, DragEndEvent, DragStartEvent, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { usePageStore } from '../../stores/pageStore'
@@ -6,6 +6,9 @@ import { BlockWrapper } from './BlockWrapper'
 import { BlockRenderer } from './BlockRenderer'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import { Block } from '../../types'
+import React from 'react'
+
+const MemoBlockRenderer = React.memo(BlockRenderer)
 
 export function BlockEditor() {
   const { page, reorderBlocks } = usePageStore()
@@ -37,6 +40,21 @@ export function BlockEditor() {
     setSlashMenu(null)
   }, [])
 
+  const numberedListCounters = useMemo(() => {
+    if (!page) return {}
+    const counters: Record<string, number> = {}
+    let count = 0
+    for (const block of page.blocks) {
+      if (block.type === 'numberedList') {
+        count++
+        counters[block.id] = count
+      } else {
+        count = 0
+      }
+    }
+    return counters
+  }, [page])
+
   if (!page) return null
 
   const blockIds = page.blocks.map(b => b.id)
@@ -47,13 +65,17 @@ export function BlockEditor() {
         <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
           {page.blocks.map(block => (
             <BlockWrapper key={block.id} block={block}>
-              <BlockRenderer block={block} onSlashCommand={openSlashMenu} />
+              <MemoBlockRenderer
+                block={block}
+                blockIndex={numberedListCounters[block.id]}
+                onSlashCommand={openSlashMenu}
+              />
             </BlockWrapper>
           ))}
         </SortableContext>
         <DragOverlay>
           {activeBlock && (
-            <div className="bg-white shadow-lg rounded-md p-2 opacity-90 border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 shadow-lg rounded-md p-2 opacity-90 border border-gray-200 dark:border-gray-700">
               <BlockRenderer block={activeBlock} onSlashCommand={() => {}} />
             </div>
           )}

@@ -1,16 +1,16 @@
 import { useRef, useCallback, KeyboardEvent } from 'react'
 import { usePageStore } from '../../stores/pageStore'
-import { createTodoBlock } from '../../lib/blockUtils'
-import { TodoBlock as TodoBlockType } from '../../types'
+import { createParagraphBlock } from '../../lib/blockUtils'
+import { QuoteBlock as QuoteBlockType } from '../../types'
 
 interface Props {
-  block: TodoBlockType
+  block: QuoteBlockType
   onSlashCommand: (blockId: string, position: { top: number; left: number }) => void
 }
 
-export function TodoBlock({ block, onSlashCommand }: Props) {
+export function QuoteBlock({ block, onSlashCommand }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const { updateBlock, addBlockAfter, deleteBlock, indentBlock, outdentBlock } = usePageStore()
+  const { updateBlock, addBlockAfter, deleteBlock } = usePageStore()
 
   const handleInput = useCallback(() => {
     if (ref.current) {
@@ -18,23 +18,12 @@ export function TodoBlock({ block, onSlashCommand }: Props) {
     }
   }, [block.id, updateBlock])
 
-  const toggleChecked = () => {
-    updateBlock(block.id, { checked: !block.checked })
-  }
-
   const handleKeyDown = (e: KeyboardEvent) => {
     const text = ref.current?.textContent || ''
 
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      if (e.shiftKey) outdentBlock(block.id)
-      else indentBlock(block.id)
-      return
-    }
-
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      const newBlock = createTodoBlock()
+      const newBlock = createParagraphBlock()
       addBlockAfter(block.id, newBlock)
       setTimeout(() => {
         const el = document.querySelector(`[data-block-id="${newBlock.id}"] [contenteditable]`) as HTMLElement
@@ -61,19 +50,13 @@ export function TodoBlock({ block, onSlashCommand }: Props) {
   }
 
   return (
-    <div data-block-id={block.id} className="flex items-start gap-2">
-      <input
-        type="checkbox"
-        checked={block.checked}
-        onChange={toggleChecked}
-        className="mt-1.5 w-4 h-4 rounded border-gray-300 cursor-pointer accent-blue-600"
-      />
+    <div data-block-id={block.id} className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-1">
       <div
         ref={ref}
         contentEditable
         suppressContentEditableWarning
-        className={`outline-none py-1 flex-1 min-h-[1.5em] text-base leading-relaxed ${block.checked ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}
-        data-placeholder="待办事项"
+        className="outline-none py-1 text-base leading-relaxed min-h-[1.5em] text-gray-600 dark:text-gray-300 italic"
+        data-placeholder="引用内容..."
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         dangerouslySetInnerHTML={{ __html: block.content }}

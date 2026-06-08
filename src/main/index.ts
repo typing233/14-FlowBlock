@@ -1,10 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc'
 import { ensureDataDir } from './services/appPaths'
 
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
@@ -19,20 +19,27 @@ function createWindow(): void {
     show: false
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  win.on('ready-to-show', () => {
+    win.show()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return win
 }
 
 app.whenReady().then(async () => {
   await ensureDataDir()
   registerIpcHandlers()
+
+  ipcMain.handle('window:new', () => {
+    createWindow()
+  })
+
   createWindow()
 
   app.on('activate', () => {

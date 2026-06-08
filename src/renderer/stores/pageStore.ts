@@ -1,17 +1,22 @@
 import { create } from 'zustand'
 import { Page, Block } from '../types'
-import { createParagraphBlock } from '../lib/blockUtils'
+import { createParagraphBlock, createId } from '../lib/blockUtils'
 
 interface PageState {
   page: Page | null
   isDirty: boolean
-  loadPage: (pageId: string) => Promise<void>
+  loadPage: (spaceId: string, pageId: string) => Promise<void>
   setPage: (page: Page | null) => void
   updateBlock: (blockId: string, updates: Partial<Block>) => void
   addBlockAfter: (afterBlockId: string, block: Block) => void
   deleteBlock: (blockId: string) => string | null
   reorderBlocks: (activeId: string, overId: string) => void
   updatePageTitle: (title: string) => void
+  indentBlock: (blockId: string) => void
+  outdentBlock: (blockId: string) => void
+  moveBlockUp: (blockId: string) => void
+  moveBlockDown: (blockId: string) => void
+  duplicateBlock: (blockId: string) => void
   markClean: () => void
   getPage: () => Page | null
 }
@@ -20,8 +25,8 @@ export const usePageStore = create<PageState>((set, get) => ({
   page: null,
   isDirty: false,
 
-  loadPage: async (pageId: string) => {
-    const page = await window.api.loadPage(pageId)
+  loadPage: async (spaceId: string, pageId: string) => {
+    const page = await window.api.loadPage(spaceId, pageId)
     set({ page, isDirty: false })
   },
 
@@ -75,6 +80,64 @@ export const usePageStore = create<PageState>((set, get) => ({
       page: { ...page, meta: { ...page.meta, title, updatedAt: new Date().toISOString() } },
       isDirty: true
     })
+  },
+
+  indentBlock: (blockId) => {
+    const { page } = get()
+    if (!page) return
+    const blocks = page.blocks.map(b => {
+      if (b.id === blockId) {
+        const current = b.indent || 0
+        if (current < 4) return { ...b, indent: current + 1, updatedAt: new Date().toISOString() } as Block
+      }
+      return b
+    })
+    set({ page: { ...page, blocks }, isDirty: true })
+  },
+
+  outdentBlock: (blockId) => {
+    const { page } = get()
+    if (!page) return
+    const blocks = page.blocks.map(b => {
+      if (b.id === blockId) {
+        const current = b.indent || 0
+        if (current > 0) return { ...b, indent: current - 1, updatedAt: new Date().toISOString() } as Block
+      }
+      return b
+    })
+    set({ page: { ...page, blocks }, isDirty: true })
+  },
+
+  moveBlockUp: (blockId) => {
+    const { page } = get()
+    if (!page) return
+    const blocks = [...page.blocks]
+    const index = blocks.findIndex(b => b.id === blockId)
+    if (index <= 0) return
+    ;[blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]]
+    set({ page: { ...page, blocks }, isDirty: true })
+  },
+
+  moveBlockDown: (blockId) => {
+    const { page } = get()
+    if (!page) return
+    const blocks = [...page.blocks]
+    const index = blocks.findIndex(b => b.id === blockId)
+    if (index < 0 || index >= blocks.length - 1) return
+    ;[blocks[index], blocks[index + 1]] = [blocks[index + 1], blocks[index]]
+    set({ page: { ...page, blocks }, isDirty: true })
+  },
+
+  duplicateBlock: (blockId) => {
+    const { page } = get()
+    if (!page) return
+    const block = page.blocks.find(b => b.id === blockId)
+    if (!block) return
+    const newBlock = { ...block, id: createId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    const index = page.blocks.findIndex(b => b.id === blockId)
+    const blocks = [...page.blocks]
+    blocks.splice(index + 1, 0, newBlock as Block)
+    set({ page: { ...page, blocks }, isDirty: true })
   },
 
   markClean: () => set({ isDirty: false }),
