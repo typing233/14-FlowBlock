@@ -22,6 +22,7 @@ interface SidebarState {
   toggleExpanded: (pageId: string) => void
   toggleSidebar: () => void
   getTree: () => TreeNode[]
+  movePageToParent: (spaceId: string, pageId: string, newParentId: string | null, afterPageId: string | null) => Promise<void>
 }
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
@@ -102,5 +103,53 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     }
 
     return buildTree(null)
+  },
+
+  movePageToParent: async (spaceId: string, pageId: string, newParentId: string | null, afterPageId: string | null) => {
+    const { pages } = get()
+    const movingPage = pages.find(p => p.id === pageId)
+    if (!movingPage) return
+
+    // Prevent moving a page into its own descendant
+    const isDescendant = (parentId: string, targetId: string): boolean => {
+      const children = pages.filter(p => p.parentId === parentId)
+      for (const child of children) {
+        if (child.id === targetId) return true
+        if (isDescendant(child.id, targetId)) return true
+      }
+      return false
+    }
+    if (newParentId && (newParentId === pageId || isDescendant(pageId, newParentId))) return
+
+    // Compute new order: siblings under newParentId
+    const siblings = pages
+      .filter(p => (p.parentId || null) === newParentId && p.id !== pageId)
+      .sort((a, b) => a.order - b.order)
+
+    let newOrder: number
+    if (afterPageId) {
+      const afterIdx = siblings.findIndex(s => s.id === afterPageId)
+      if (afterIdx >= 0) {
+        const afterOrder = siblings[afterIdx].order
+        const nextOrder = siblings[afterIdx + 1]?.order
+        newOrder = nextOrder != null ? (afterOrder + nextOrder) / 2 : afterOrder + 1000
+      } else {
+        newOrder = siblings.length > 0 ? siblings[siblings.length - 1].order + 1000 : 1000
+      }
+    } else {
+      // Insert at beginning
+      newOrder = siblings.length > 0 ? siblings[0].order / 2 : 1000
+    }
+
+    await window.api.movePage(spaceId, pageId, newParentId, newOrder)
+
+    // Expand parent so the moved page is visible
+    if (newParentId) {
+      const { expandedIds } = get()
+      expandedIds.add(newParentId)
+      set({ expandedIds: new Set(expandedIds) })
+    }
+
+    await get().fetchPages(spaceId)
   }
 }))

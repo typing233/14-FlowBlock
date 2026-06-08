@@ -25,7 +25,7 @@ export function MainContent() {
 
   const handleExportPdf = async () => {
     if (!page) return
-    await window.api.exportPdf(page.meta.title)
+    await window.api.exportPdf(page)
   }
 
   if (!page) {

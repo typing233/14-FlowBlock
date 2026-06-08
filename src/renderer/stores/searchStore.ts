@@ -13,10 +13,14 @@ interface SearchState {
   query: string
   results: SearchResult[]
   loading: boolean
+  highlightBlockId: string | null
+  highlightQuery: string | null
   open: () => void
   close: () => void
   setQuery: (query: string) => void
   search: (query: string) => Promise<void>
+  setHighlight: (blockId: string | null, query: string | null) => void
+  clearHighlight: () => void
 }
 
 export const useSearchStore = create<SearchState>((set) => ({
@@ -24,9 +28,11 @@ export const useSearchStore = create<SearchState>((set) => ({
   query: '',
   results: [],
   loading: false,
+  highlightBlockId: null,
+  highlightQuery: null,
 
   open: () => set({ isOpen: true, query: '', results: [] }),
-  close: () => set({ isOpen: false, query: '', results: [] }),
+  close: () => set({ isOpen: false }),
 
   setQuery: (query) => set({ query }),
 
@@ -42,5 +48,8 @@ export const useSearchStore = create<SearchState>((set) => ({
     } catch {
       set({ results: [], loading: false })
     }
-  }
+  },
+
+  setHighlight: (blockId, query) => set({ highlightBlockId: blockId, highlightQuery: query }),
+  clearHighlight: () => set({ highlightBlockId: null, highlightQuery: null })
 }))

@@ -1,9 +1,10 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect, useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreHorizontal } from 'lucide-react'
 import { Block } from '../../types'
 import { BlockActionMenu } from './BlockActionMenu'
+import { useSearchStore } from '../../stores/searchStore'
 
 interface Props {
   block: Block
@@ -14,6 +15,27 @@ export function BlockWrapper({ block, children }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
   const [showMenu, setShowMenu] = useState(false)
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
+  const [isHighlighted, setIsHighlighted] = useState(false)
+  const highlightBlockId = useSearchStore(s => s.highlightBlockId)
+  const highlightQuery = useSearchStore(s => s.highlightQuery)
+  const clearHighlight = useSearchStore(s => s.clearHighlight)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (highlightBlockId === block.id) {
+      setIsHighlighted(true)
+      // Scroll into view
+      setTimeout(() => {
+        wrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 50)
+      // Clear highlight after 3 seconds
+      const timer = setTimeout(() => {
+        setIsHighlighted(false)
+        clearHighlight()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [highlightBlockId, block.id, clearHighlight])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -31,7 +53,16 @@ export function BlockWrapper({ block, children }: Props) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="group relative flex items-start gap-1 py-0.5">
+    <div
+      ref={(node) => {
+        setNodeRef(node)
+        ;(wrapperRef as any).current = node
+      }}
+      style={style}
+      className={`group relative flex items-start gap-1 py-0.5 rounded transition-colors duration-500 ${
+        isHighlighted ? 'bg-yellow-100 dark:bg-yellow-900/30 ring-2 ring-yellow-300 dark:ring-yellow-600' : ''
+      }`}
+    >
       <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={handleMenuClick}

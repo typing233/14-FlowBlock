@@ -5,7 +5,7 @@ import { useSidebarStore } from '../../stores/sidebarStore'
 import { useSpaceStore } from '../../stores/spaceStore'
 
 export function SearchDialog() {
-  const { isOpen, query, results, loading, close, setQuery, search } = useSearchStore()
+  const { isOpen, query, results, loading, close, setQuery, search, setHighlight } = useSearchStore()
   const setActivePageId = useSidebarStore(s => s.setActivePageId)
   const setActiveSpaceId = useSpaceStore(s => s.setActiveSpaceId)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -34,9 +34,22 @@ export function SearchDialog() {
   }, [results])
 
   const handleSelect = (result: typeof results[0]) => {
+    const searchQuery = query
     setActiveSpaceId(result.spaceId)
     setActivePageId(result.pageId)
     close()
+
+    // After the page loads, scroll to block and highlight
+    if (result.blockId) {
+      setHighlight(result.blockId, searchQuery)
+      // Wait for render, then scroll
+      setTimeout(() => {
+        const blockEl = document.querySelector(`[data-block-id="${result.blockId}"]`)
+        if (blockEl) {
+          blockEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 150)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, FileText, Trash2, Check, X, ChevronRight, ChevronDown, FolderOpen, Moon, Sun, Monitor, Import } from 'lucide-react'
+import { DndContext, closestCenter, DragEndEvent, DragStartEvent, DragOverlay, PointerSensor, useSensor, useSensors, DragOverEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useSidebarStore } from '../../stores/sidebarStore'
 import { useSpaceStore } from '../../stores/spaceStore'
 import { useThemeStore } from '../../stores/themeStore'
@@ -12,13 +15,42 @@ interface TreeNode {
   expanded: boolean
 }
 
+interface FlatItem {
+  page: PageMeta
+  depth: number
+  hasChildren: boolean
+  expanded: boolean
+}
+
+function flattenTree(nodes: TreeNode[], depth = 0): FlatItem[] {
+  const result: FlatItem[] = []
+  for (const node of nodes) {
+    result.push({
+      page: node.page,
+      depth,
+      hasChildren: node.children.length > 0,
+      expanded: node.expanded
+    })
+    if (node.expanded) {
+      result.push(...flattenTree(node.children, depth + 1))
+    }
+  }
+  return result
+}
+
 export function Sidebar() {
-  const { pages, activePageId, fetchPages, createPage, setActivePageId, renamePage, deletePage, toggleExpanded, getTree, sidebarVisible } = useSidebarStore()
+  const { pages, activePageId, fetchPages, createPage, setActivePageId, renamePage, deletePage, toggleExpanded, getTree, sidebarVisible, movePageToParent } = useSidebarStore()
   const { spaces, activeSpaceId, fetchSpaces, createSpace, setActiveSpaceId } = useSpaceStore()
   const { theme, setTheme } = useThemeStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [showSpaceMenu, setShowSpaceMenu] = useState(false)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropIndicator, setDropIndicator] = useState<{ id: string; position: 'before' | 'after' | 'inside' } | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
 
   useEffect(() => {
     fetchSpaces()
@@ -29,6 +61,10 @@ export function Sidebar() {
       fetchPages(activeSpaceId)
     }
   }, [activeSpaceId])
+
+  const tree = getTree()
+  const flatItems = useMemo(() => flattenTree(tree), [tree])
+  const flatIds = useMemo(() => flatItems.map(item => item.page.id), [flatItems])
 
   if (!sidebarVisible) return null
 
@@ -77,8 +113,73 @@ export function Sidebar() {
     setShowSpaceMenu(false)
   }
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setDragId(event.active.id as string)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) {
+      setDropIndicator(null)
+      return
+    }
+
+    const overRect = (over as any).rect?.current?.translated
+    const overElement = document.querySelector(`[data-page-tree-id="${over.id}"]`)
+    if (!overElement) {
+      setDropIndicator({ id: over.id as string, position: 'after' })
+      return
+    }
+
+    const rect = overElement.getBoundingClientRect()
+    const y = (event.activatorEvent as MouseEvent).clientY + (event.delta?.y || 0)
+    const relativeY = y - rect.top
+    const height = rect.height
+
+    if (relativeY < height * 0.25) {
+      setDropIndicator({ id: over.id as string, position: 'before' })
+    } else if (relativeY > height * 0.75) {
+      setDropIndicator({ id: over.id as string, position: 'after' })
+    } else {
+      setDropIndicator({ id: over.id as string, position: 'inside' })
+    }
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setDragId(null)
+    setDropIndicator(null)
+
+    if (!over || active.id === over.id || !activeSpaceId) return
+
+    const draggedId = active.id as string
+    const overId = over.id as string
+    const overItem = flatItems.find(item => item.page.id === overId)
+    if (!overItem) return
+
+    const indicator = dropIndicator || { id: overId, position: 'after' as const }
+
+    if (indicator.position === 'inside') {
+      // Reparent: make draggedId a child of overId
+      await movePageToParent(activeSpaceId, draggedId, overId, null)
+    } else if (indicator.position === 'before') {
+      // Insert before overItem: same parent as overItem
+      const parentId = overItem.page.parentId || null
+      // Find previous sibling
+      const siblings = pages
+        .filter(p => (p.parentId || null) === parentId)
+        .sort((a, b) => a.order - b.order)
+      const overIdx = siblings.findIndex(s => s.id === overId)
+      const afterPageId = overIdx > 0 ? siblings[overIdx - 1].id : null
+      await movePageToParent(activeSpaceId, draggedId, parentId, afterPageId)
+    } else {
+      // Insert after overItem: same parent as overItem
+      const parentId = overItem.page.parentId || null
+      await movePageToParent(activeSpaceId, draggedId, parentId, overId)
+    }
+  }
+
   const activeSpace = spaces.find(s => s.id === activeSpaceId)
-  const tree = getTree()
 
   const themeIcons = { light: Sun, dark: Moon, system: Monitor }
   const nextTheme: Record<string, 'light' | 'dark' | 'system'> = { light: 'dark', dark: 'system', system: 'light' }
@@ -127,26 +228,44 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Page tree */}
+      {/* Page tree with DnD */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {tree.map(node => (
-          <TreeItem
-            key={node.page.id}
-            node={node}
-            depth={0}
-            activePageId={activePageId}
-            editingId={editingId}
-            editTitle={editTitle}
-            setEditTitle={setEditTitle}
-            onSelect={setActivePageId}
-            onDoubleClick={startRename}
-            onToggle={toggleExpanded}
-            onDelete={(id) => activeSpaceId && deletePage(activeSpaceId, id)}
-            onCreateChild={(parentId) => handleCreate(parentId)}
-            onConfirmRename={confirmRename}
-            onCancelRename={cancelRename}
-          />
-        ))}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={flatIds} strategy={verticalListSortingStrategy}>
+            {flatItems.map(item => (
+              <SortableTreeItem
+                key={item.page.id}
+                item={item}
+                activePageId={activePageId}
+                editingId={editingId}
+                editTitle={editTitle}
+                setEditTitle={setEditTitle}
+                isDragging={dragId === item.page.id}
+                dropIndicator={dropIndicator?.id === item.page.id ? dropIndicator.position : null}
+                onSelect={setActivePageId}
+                onDoubleClick={startRename}
+                onToggle={toggleExpanded}
+                onDelete={(id) => activeSpaceId && deletePage(activeSpaceId, id)}
+                onCreateChild={(parentId) => handleCreate(parentId)}
+                onConfirmRename={confirmRename}
+                onCancelRename={cancelRename}
+              />
+            ))}
+          </SortableContext>
+          <DragOverlay>
+            {dragId && (
+              <div className="bg-white dark:bg-gray-800 shadow-lg rounded px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 opacity-90">
+                {pages.find(p => p.id === dragId)?.title || ''}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* Bottom actions */}
@@ -177,13 +296,14 @@ export function Sidebar() {
   )
 }
 
-interface TreeItemProps {
-  node: TreeNode
-  depth: number
+interface SortableTreeItemProps {
+  item: FlatItem
   activePageId: string | null
   editingId: string | null
   editTitle: string
   setEditTitle: (v: string) => void
+  isDragging: boolean
+  dropIndicator: 'before' | 'after' | 'inside' | null
   onSelect: (id: string) => void
   onDoubleClick: (id: string, title: string) => void
   onToggle: (id: string) => void
@@ -193,28 +313,49 @@ interface TreeItemProps {
   onCancelRename: () => void
 }
 
-function TreeItem({ node, depth, activePageId, editingId, editTitle, setEditTitle, onSelect, onDoubleClick, onToggle, onDelete, onCreateChild, onConfirmRename, onCancelRename }: TreeItemProps) {
-  const { page, children, expanded } = node
-  const hasChildren = children.length > 0
+function SortableTreeItem({ item, activePageId, editingId, editTitle, setEditTitle, isDragging, dropIndicator, onSelect, onDoubleClick, onToggle, onDelete, onCreateChild, onConfirmRename, onCancelRename }: SortableTreeItemProps) {
+  const { page, depth, hasChildren, expanded } = item
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: page.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1
+  }
 
   return (
-    <div>
+    <div ref={setNodeRef} style={style} data-page-tree-id={page.id} className="relative">
+      {/* Drop indicators */}
+      {dropIndicator === 'before' && (
+        <div className="absolute top-0 left-4 right-2 h-0.5 bg-blue-500 rounded" />
+      )}
+      {dropIndicator === 'after' && (
+        <div className="absolute bottom-0 left-4 right-2 h-0.5 bg-blue-500 rounded" />
+      )}
+
       <div
         className={`group flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer text-sm ${
-          activePageId === page.id ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          dropIndicator === 'inside'
+            ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-400'
+            : activePageId === page.id
+              ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
         style={{ paddingLeft: depth * 16 + 8 }}
         onClick={() => onSelect(page.id)}
         onDoubleClick={() => onDoubleClick(page.id, page.title)}
       >
-        <button
-          className="shrink-0 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          onClick={(e) => { e.stopPropagation(); onToggle(page.id) }}
-        >
-          {hasChildren ? (
-            expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
-          ) : <span className="w-3" />}
-        </button>
+        {/* Drag handle area */}
+        <span {...attributes} {...listeners} className="shrink-0 cursor-grab active:cursor-grabbing">
+          <button
+            className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            onClick={(e) => { e.stopPropagation(); onToggle(page.id) }}
+          >
+            {hasChildren ? (
+              expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
+            ) : <span className="w-3" />}
+          </button>
+        </span>
         <FileText size={13} className="shrink-0 text-gray-400" />
 
         {editingId === page.id ? (
@@ -259,25 +400,6 @@ function TreeItem({ node, depth, activePageId, editingId, editTitle, setEditTitl
           </>
         )}
       </div>
-
-      {expanded && children.map(child => (
-        <TreeItem
-          key={child.page.id}
-          node={child}
-          depth={depth + 1}
-          activePageId={activePageId}
-          editingId={editingId}
-          editTitle={editTitle}
-          setEditTitle={setEditTitle}
-          onSelect={onSelect}
-          onDoubleClick={onDoubleClick}
-          onToggle={onToggle}
-          onDelete={onDelete}
-          onCreateChild={onCreateChild}
-          onConfirmRename={onConfirmRename}
-          onCancelRename={onCancelRename}
-        />
-      ))}
     </div>
   )
 }

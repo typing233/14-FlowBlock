@@ -27,7 +27,7 @@ export interface IElectronAPI {
 
   // Export
   exportMarkdown(page: Page): Promise<boolean>
-  exportPdf(title: string): Promise<boolean>
+  exportPdf(page: Page): Promise<boolean>
 
   // Import
   importMarkdown(): Promise<{ title: string; blocks: any[] } | null>

@@ -54,10 +54,10 @@ export function registerIpcHandlers(): void {
     return exportToMarkdown(page, win)
   })
 
-  ipcMain.handle('export:pdf', async (event, title: string) => {
+  ipcMain.handle('export:pdf', async (event, page) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return false
-    return exportToPdf(win, title)
+    return exportToPdf(page, win)
   })
 
   // Import

@@ -20,7 +20,7 @@ const api = {
 
   // Export
   exportMarkdown: (page: unknown) => ipcRenderer.invoke('export:markdown', page),
-  exportPdf: (title: string) => ipcRenderer.invoke('export:pdf', title),
+  exportPdf: (page: unknown) => ipcRenderer.invoke('export:pdf', page),
 
   // Import
   importMarkdown: () => ipcRenderer.invoke('import:markdown'),
